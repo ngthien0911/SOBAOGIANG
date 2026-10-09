@@ -36,7 +36,7 @@
     <article class="panel">
       <div class="panel-head"><div class="panel-title"><div class="title-icon">▧</div><div><h2>Giáo án</h2><div class="sub">Trạng thái tải lên theo khối</div></div></div><span class="count">82 bài</span></div>
       <div class="plans" id="plans"></div>
-      <p class="hint">Tích vào từng bài sau khi đã tải giáo án lên. Có thể sửa tên bài trực tiếp; trạng thái được tự động lưu riêng theo từng tuần.</p>
+      <p class="hint">Tích vào từng bài sau khi đã tải giáo án lên. Danh sách và trạng thái giáo án dùng chung cho tất cả các tuần; thời khóa biểu vẫn lưu riêng theo tuần.</p>
     </article>
   </section>
   <div class="bottom-note">Sổ bài dạy cá nhân · Dữ liệu tự động lưu trên trình duyệt của thiết bị này</div>
@@ -59,11 +59,39 @@ let store={};
 try{store=JSON.parse(localStorage.getItem("sbd-polished")||"{}")}catch(e){store={}}
 let week=Number(store.week)||initialWeek;
 let weeks=store.weeks&&typeof store.weeks==="object"?store.weeks:{};
-function makeWeek(){const plans={};blocks.forEach(b=>plans[b]=defaultLessons(b));return {classes:starterClasses.map(([name])=>({id:cryptoId(),name,lesson:""})),plans}}
+// Danh sách giáo án dùng chung cho mọi tuần.
+let sharedPlans=store.sharedPlans&&typeof store.sharedPlans==="object"?store.sharedPlans:null;
 function cryptoId(){return Math.random().toString(36).slice(2,10)}
-function data(){if(!weeks[week])weeks[week]=makeWeek();let d=weeks[week];if(!Array.isArray(d.classes))d.classes=[];if(!d.plans)d.plans={};blocks.forEach(b=>{if(!Array.isArray(d.plans[b]))d.plans[b]=defaultLessons(b);else{const target=defaultLessons(b);d.plans[b]=d.plans[b].map((x,i)=>typeof x==="object"&&x!==null?{name:x.name||target[i]?.name||("Bài "+(i+1)),done:!!x.done}:{name:target[i]?.name||("Bài "+(i+1)),done:!!x});while(d.plans[b].length<target.length)d.plans[b].push(target[d.plans[b].length]);}});return d}
+function makePlans(){const plans={};blocks.forEach(b=>plans[b]=defaultLessons(b));return plans}
+function makeWeek(){return {classes:starterClasses.map(([name])=>({id:cryptoId(),name,lesson:""}))}}
+if(!sharedPlans){
+  // Chuyển danh sách giáo án cũ sang dùng chung, ưu tiên tuần đang xem.
+  sharedPlans=(weeks[week]&&weeks[week].plans)||((Object.values(weeks).find(w=>w&&w.plans)||{}));
+  if(!sharedPlans||!Object.keys(sharedPlans).length)sharedPlans=makePlans();
+}
+function normalizeSharedPlans(){
+  blocks.forEach(b=>{
+    const target=defaultLessons(b);
+    if(!Array.isArray(sharedPlans[b]))sharedPlans[b]=target;
+    else{
+      sharedPlans[b]=sharedPlans[b].map((x,i)=>typeof x==="object"&&x!==null
+        ?{name:x.name||target[i]?.name||("Bài "+(i+1)),done:!!x.done}
+        :{name:target[i]?.name||("Bài "+(i+1)),done:!!x});
+      while(sharedPlans[b].length<target.length)sharedPlans[b].push(target[sharedPlans[b].length]);
+    }
+  });
+}
+function data(){
+  if(!weeks[week])weeks[week]=makeWeek();
+  let d=weeks[week];
+  if(!Array.isArray(d.classes))d.classes=[];
+  normalizeSharedPlans();
+  d.plans=sharedPlans;
+  return d;
+}
 function save(show=false){
-  store={week,weeks};
+  // Chỉ thời khóa biểu lưu theo tuần; giáo án lưu dùng chung.
+  store={week,weeks,sharedPlans};
   try{
     localStorage.setItem("sbd-polished",JSON.stringify(store));
     if(show)toast("✓ Đã tự động lưu");
@@ -126,6 +154,7 @@ function importData(event){
       }
 
       weeks = imported.weeks;
+      sharedPlans = imported.sharedPlans || ((weeks[Number(imported.week)||initialWeek]||{}).plans) || (Object.values(weeks).find(w=>w&&w.plans)||{}).plans || makePlans();
       week = Number(imported.week) || initialWeek;
       if(week < 1 || week > 52) week = initialWeek;
 
@@ -143,7 +172,7 @@ function importData(event){
   reader.readAsText(file);
 }
 
-function resetAll(){if(!confirm("Khôi phục dữ liệu ban đầu? Các thay đổi đã lưu trên trình duyệt này sẽ bị xóa."))return;localStorage.removeItem("sbd-polished");store={};weeks={};week=initialWeek;closeSettings();render();toast("Đã khôi phục")}
+function resetAll(){if(!confirm("Khôi phục dữ liệu ban đầu? Các thay đổi đã lưu trên trình duyệt này sẽ bị xóa."))return;localStorage.removeItem("sbd-polished");store={};weeks={};sharedPlans=makePlans();week=initialWeek;closeSettings();render();toast("Đã khôi phục")}
 // Tự động lưu lần cuối khi rời trang hoặc đóng tab.
 window.addEventListener("beforeunload",()=>save());
 window.addEventListener("pagehide",()=>save());
@@ -155,3 +184,4 @@ render();
 </script>
 </body>
 </html>
+
